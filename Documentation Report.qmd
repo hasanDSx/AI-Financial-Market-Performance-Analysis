@@ -1,0 +1,318 @@
+---
+title: "AI Financial Market Performance Analysis"
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    geometry: margin=1in
+    code-block-bg: "#e0e0e0"
+    code-block-border-left: true
+    code-block-border-color: "#888"
+    code-block-padding: 0.8em
+    code-overflow: wrap
+    tbl-cap-location: top
+    tbl-colwidths: auto
+execute:
+  echo: true
+  warning: false
+---
+
+\newpage
+## Import the required libraries
+```{python}
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sqlalchemy import create_engine
+```
+
+## EDA & Data Cleaning
+### Import the dataset from MS SQL
+```{python}
+engine = create_engine(
+    "mssql+pyodbc://localhost\\SQLEXPRESS/ai_fin_market"
+    "?driver=ODBC+Driver+17+for+SQL+Server"
+    "&trusted_connection=yes"
+)
+ai_market = pd.read_sql("SELECT * FROM dbo.ai_data", engine)
+ai_market.head()
+```
+
+### Explore the dataset shape & columns type
+```{python}
+for i, (col, ty) in enumerate(ai_market.dtypes.items(), start=1):
+    if i < 10:
+        print(f"{i:>2}. {col:<26} {ty}")
+    else:
+        print(f"{i:>2}. {col:<25} {ty}") 
+```
+
+### Total rows and columns
+```{python}
+rows, cols = ai_market.shape
+print(f"Rows: {rows}\nColumns: {cols}")
+```
+
+### Change the date column type
+```{python}
+ai_market['Date'] = pd.to_datetime(ai_market['Date'])
+ai_market.head()
+```
+
+### Deal with null values
+```{python}
+ai_market.isna().sum()
+```
+
+```{python}
+ai_market['Event'].fillna('Unknown', inplace=True)
+```
+
+### Add Columns
+```{python}
+ai_market['Year'] = ai_market['Date'].dt.year
+ai_market['Month'] = ai_market['Date'].dt.month
+```
+
+### Explore the unique values
+#### Companies
+```{python}
+for i, comp in enumerate(ai_market['Company'].unique(), start=1):
+    print(f"{i}. {comp}\n")
+```
+
+#### Date Range
+```{python}
+start_date = ai_market['Date'].min()
+end_date = ai_market['Date'].max()
+
+print(f"start date: {start_date}\nend_date: {end_date}")
+```
+
+### Save the cleaned data
+```{python}
+ai_market.to_sql(
+    "ai_processed",
+    con=engine,
+    schema="dbo",
+    if_exists="replace",
+    index=False
+)
+```
+
+## Data Analysis
+### Import the new dataset
+```{python}
+ai_processed = pd.read_sql("SELECT * FROM dbo.ai_processed", engine)
+ai = ai_processed.copy()
+```
+
+### How much amount the companies on R&D
+```{python}
+RD = ai.groupby('Company')['R_D_Spending_USD_Mn'].sum().sort_values(ascending=False)
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+# (Bar Chart)
+axes[0].bar(
+    RD.index,
+    RD.values,
+    color=['blue', 'cyan', 'skyblue']
+)
+axes[0].set_title('Total AI Spending by Company (USD Mn)')
+axes[0].set_xlabel('Company')
+axes[0].set_ylabel('Spending (USD Mn)')
+for i, v in enumerate(RD.values):
+    axes[0].text(i, v, f'{v:,.0f}', ha='center', va='bottom', fontsize=9)
+# (Pie Chart)
+axes[1].pie(
+    RD.values,
+    labels=RD.index,
+    autopct='%1.1f%%',
+    startangle=90,
+    colors=['blue', 'cyan', 'skyblue'],
+    wedgeprops={'edgecolor': 'white'}
+)
+axes[1].set_title('AI Spending Share by Company (%)')
+axes[1].axis('equal')
+plt.tight_layout()
+plt.show()
+```
+
+### Revenue Earned by the companies
+```{python}
+RD = ai.groupby('Company')['AI_Revenue_USD_Mn'].sum().sort_values(ascending=False)
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+# (Bar Chart)
+axes[0].bar(
+    RD.index,
+    RD.values,
+    color=['blue', 'cyan', 'skyblue']
+)
+axes[0].set_title('Total AI Revenue by Company (USD Mn)')
+axes[0].set_xlabel('Company')
+axes[0].set_ylabel('Revenue (USD Mn)')
+for i, v in enumerate(RD.values):
+    axes[0].text(i, v, f'{v:,.0f}', ha='center', va='bottom', fontsize=9)
+# (Pie Chart)
+axes[1].pie(
+    RD.values,
+    labels=RD.index,
+    autopct='%1.1f%%',
+    startangle=90,
+    colors=['blue', 'cyan', 'skyblue'],
+    wedgeprops={'edgecolor': 'white'}
+)
+axes[1].set_title('AI Revenue Share by Company (%)')
+axes[1].axis('equal')
+plt.tight_layout()
+plt.show()
+```
+
+### Datewise Impact on the stock
+```{python}
+ai_openAi = ai[ai['Company'] == 'OpenAI']
+ai_google = ai[ai['Company'] == 'Google']
+ai_meta   = ai[ai['Company'] == 'Meta']
+fig, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
+
+# (OpenAI)
+axes[0].plot(ai_openAi['Date'],ai_openAi['Stock_Impact'], color='dodgerblue',linewidth=2,
+            marker='o', markersize=4, markerfacecolor='white')
+axes[0].fill_between(ai_openAi['Date'], ai_openAi['Stock_Impact'],color='lightblue', alpha=0.3)
+axes[0].set_title('OpenAI Stock Impact Over Time', fontsize=13, weight='bold')
+axes[0].grid(True, linestyle='--', alpha=0.5)
+
+# (Google)
+axes[1].plot(ai_google['Date'], ai_google['Stock_Impact'], color='seagreen',
+            linewidth=2, marker='o', markersize=4, markerfacecolor='white')
+axes[1].fill_between(ai_google['Date'], ai_google['Stock_Impact'],
+color='palegreen', alpha=0.3 )
+axes[1].set_title('Google Stock Impact Over Time', fontsize=13, weight='bold')
+axes[1].grid(True, linestyle='--', alpha=0.5)
+
+# (Meta)
+axes[2].plot(ai_meta['Date'], ai_meta['Stock_Impact'], color='darkorange',
+            linewidth=2, marker='o', markersize=4, markerfacecolor='white')
+axes[2].fill_between(ai_meta['Date'], ai_meta['Stock_Impact'], color='moccasin', alpha=0.3)
+axes[2].set_title('Meta Stock Impact Over Time', fontsize=13, weight='bold')
+axes[2].grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+```
+
+\newpage
+### Company-wise stock impact over time
+```{python}
+Impact = ai.groupby(['Year', 'Company'])['Stock_Impact'].max().reset_index()
+
+plt.figure(figsize=(10,6))
+
+sns.barplot(
+    data = Impact,
+    x = 'Year',
+    y = 'Stock_Impact',
+    hue = 'Company',
+    palette = 'Set2'
+)
+
+plt.title('Stock Impact Comparison by Year and Company', fontsize=14, weight='bold')
+plt.xlabel('Year')
+plt.ylabel('Max Stock Impact (%)')
+
+plt.legend(title='Company')
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+``` 
+
+### Expenditure vs Revenue year-by-year
+```{python}
+spend = ai.groupby('Year')['R_D_Spending_USD_Mn'].sum()
+rev = ai.groupby('Year')['AI_Revenue_USD_Mn'].sum()
+plt.figure(figsize=(8,6))
+plt.plot(
+    spend.index,
+    spend.values,
+    color='red',
+    marker='o',
+    linewidth=2,
+    label='R&D Spending'
+)
+plt.plot(
+    rev.index,
+    rev.values,
+    color = 'blue',
+    marker = 'o',
+    linewidth = 2,
+    label = 'AI Revenue'
+)
+plt.fill_between(
+    spend.index,
+    spend.values,
+    rev.values,
+    where=(rev.values >= spend.values),
+    color='lightblue',
+    alpha=0.3,
+    label='Revenue > Spending'
+)
+plt.fill_between(
+    spend.index,
+    spend.values,
+    rev.values,
+    where=(rev.values < spend.values),
+    color='lightcoral',
+    alpha=0.3,
+    label='Spending > Revenue'
+)
+plt.title('Total R&D Spending vs AI Revenue Over Years', fontsize=14, weight='bold')
+plt.xlabel('Year', fontsize=12)
+plt.ylabel('USD (Million)', fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.legend(title='Category')
+plt.tight_layout()
+plt.show()
+```
+
+### AI Revenue growth of the companies
+#### Correlation Heatmap for AI Market data
+```{python}
+# sns.heatmap(ai.corr(numeric_only=True))
+
+plt.figure(figsize=(8,4))
+sns.heatmap(
+    ai.corr(numeric_only=True),
+    annot = True,
+    fmt = ".2f",
+    cmap = 'coolwarm',
+    center = 0,
+    linewidths = 0.5
+)
+plt.title('Correlation Heatmap for AI Market Data', fontsize=14, weight='bold')
+plt.show()
+```
+
+#### Growth analysis 
+```{python}
+plt.figure(figsize=(10,6))
+
+sns.lineplot(
+    data = ai,
+    x = 'Year',
+    y = 'AI_Revenue_Growth',
+    hue = 'Company',
+    marker = 'o'
+)
+
+plt.title('AI Revenue Growth by Company Over Years', fontsize=14, weight='bold')
+plt.xlabel('Year')
+plt.ylabel('AI Revenue Growth (%)')
+
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+sns.barplot(data=ai, x='Year', y='AI_Revenue_Growth', hue='Company')
+```
